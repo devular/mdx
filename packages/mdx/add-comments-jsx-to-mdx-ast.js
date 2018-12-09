@@ -3,6 +3,7 @@ const visit = require('unist-util-visit')
 const commentOpen = '<!--'
 const commentClose = '-->'
 
+// The MDAST has comments and jsx nodes added here, import and export nodes are added in index.js
 module.exports = _options => tree => {
   visit(tree, 'html', node => {
     if (

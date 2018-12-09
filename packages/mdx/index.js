@@ -1,17 +1,12 @@
 const unified = require('unified')
 const toMDAST = require('remark-parse')
 const squeeze = require('remark-squeeze-paragraphs')
-const toMDXAST = require('./md-ast-to-mdx-ast')
+const addCommentJsx = require('./add-comments-jsx-to-mdx-ast')
+const addImportExport = require('./add-import-export-to-mdx-ast')
 const mdxAstToMdxHast = require('./mdx-ast-to-mdx-hast')
 const mdxHastToJsx = require('./mdx-hast-to-jsx')
 
-const {
-  isImport,
-  isExport,
-  isExportDefault,
-  BLOCKS_REGEX,
-  EMPTY_NEWLINE
-} = require('./util')
+const {BLOCKS_REGEX} = require('./util')
 
 const DEFAULT_OPTIONS = {
   footnotes: true,
@@ -21,45 +16,19 @@ const DEFAULT_OPTIONS = {
   blocks: [BLOCKS_REGEX]
 }
 
-const tokenizeEsSyntax = (eat, value) => {
-  const index = value.indexOf(EMPTY_NEWLINE)
-  const subvalue = index !== -1 ? value.slice(0, index) : value
-
-  if (isExport(subvalue)) {
-    return eat(subvalue)({
-      type: 'export',
-      default: isExportDefault(subvalue),
-      value: subvalue
-    })
-  }
-
-  if (isImport(subvalue)) {
-    return eat(subvalue)({type: 'import', value: subvalue})
-  }
-}
-
-tokenizeEsSyntax.locator = (value, _fromIndex) => {
-  return isExport(value) || isImport(value) ? -1 : 1
-}
-
-function esSyntax() {
-  const Parser = this.Parser
-  const tokenizers = Parser.prototype.blockTokenizers
-  const methods = Parser.prototype.blockMethods
-
-  tokenizers.esSyntax = tokenizeEsSyntax
-
-  methods.splice(methods.indexOf('paragraph'), 0, 'esSyntax')
-}
-
+// Although named createMdxAstCompiler, this function will return a HAST
 function createMdxAstCompiler(options) {
   const mdPlugins = options.mdPlugins
 
   const fn = unified()
+    // Build Markdown AST
     .use(toMDAST, options)
-    .use(esSyntax)
+    // Add es import/export as nodes to AST
+    .use(addImportExport)
+    // Squeey paragraphs with remark
     .use(squeeze, options)
 
+  // Add custom remark plugins
   mdPlugins.forEach(plugin => {
     // Handle [plugin, pluginOptions] syntax
     if (Array.isArray(plugin) && plugin.length > 1) {
@@ -68,8 +37,10 @@ function createMdxAstCompiler(options) {
       fn.use(plugin, options)
     }
   })
-
-  fn.use(toMDXAST, options).use(mdxAstToMdxHast, options)
+  // Add HTML comment and JSX nodes to AST
+  fn.use(addCommentJsx, options)
+    // Convert MDX AST to MDX HAST
+    .use(mdxAstToMdxHast, options)
 
   return fn
 }
